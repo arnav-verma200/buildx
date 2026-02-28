@@ -433,12 +433,33 @@ document.getElementById("loginForm").addEventListener("submit",async function(e)
     const res=await fetch(API_BASE+"/api/login",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({app_number:appNo,password:pass})});
     const data=await res.json();
     if(!res.ok) throw new Error(data.message||"Login failed");
-    currentAppNumber=data.candidate.app_number;
-    currentStudentName=data.candidate.name;
-    document.getElementById("candidateName").textContent=data.candidate.name;
-    showPage("instructionsPage");
-    toast("Welcome, "+data.candidate.name,"success");
-    initProctoring(data.candidate.app_number);
+
+    // Store candidate info so the new window can pick it up
+    const payload = JSON.stringify({
+      app_number: data.candidate.app_number,
+      name:       data.candidate.name,
+      exam:       data.exam,
+      ts:         Date.now()
+    });
+    localStorage.setItem("candidateSession", payload);
+
+    // Open candidate exam in a new window and keep login portal untouched
+    const examWin = window.open(window.location.href, "_blank",
+      "width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes");
+    if(!examWin || examWin.closed || typeof examWin.closed==="undefined"){
+      // Popup blocked — fallback: navigate in same tab
+      currentAppNumber   = data.candidate.app_number;
+      currentStudentName = data.candidate.name;
+      document.getElementById("candidateName").textContent = data.candidate.name;
+      showPage("instructionsPage");
+      initProctoring(data.candidate.app_number);
+    } else {
+      // Reset login form so portal is ready for next candidate
+      document.getElementById("loginForm").reset();
+      showErr("loginApiErr","");
+      // Show a non-intrusive confirmation on the login page
+      toast("✅ Exam window opened for "+data.candidate.name,"success");
+    }
   } catch(err){ showErr("loginApiErr",err.message); }
   finally { spinner(false); }
 });
@@ -872,6 +893,28 @@ async function exportAudit() {
 }
 
 window.addEventListener("beforeunload",stopProctoring);
+
+/* ─── AUTO-LAUNCH IN NEW WINDOW ─── */
+// Runs after all declarations. If this window was opened as an exam popup,
+// localStorage will have a fresh candidateSession token — boot straight to instructions.
+(function autoLaunchIfCandidateWindow(){
+  try {
+    const raw = localStorage.getItem("candidateSession");
+    if(!raw) return;
+    const d = JSON.parse(raw);
+    // Only consume the token if it was set within the last 10 seconds
+    if(Date.now() - d.ts > 10000) return;
+    // Remove immediately so the login-portal window doesn't also trigger
+    localStorage.removeItem("candidateSession");
+    // Boot the candidate exam in this new window
+    currentAppNumber   = d.app_number;
+    currentStudentName = d.name;
+    document.getElementById("candidateName").textContent = d.name;
+    showPage("instructionsPage");
+    toast("Welcome, "+d.name,"success");
+    initProctoring(d.app_number);
+  } catch(e){ console.warn("[autoLaunch]",e); }
+})();
 </script>
 </body>
 </html>
