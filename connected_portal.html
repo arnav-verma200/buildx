@@ -685,7 +685,7 @@ function handleFeedLoad() {
 
 async function pollLiveFeedStatus() {
   try {
-    const res = await fetch("http://localhost:5001/status");
+    const res = await fetch("https://your-backend-name.onrender.com/status");
     const d = await res.json();
     const el = document.getElementById("liveFeedCandidate");
     if (d.student_name && d.student_name !== "Unknown") {
